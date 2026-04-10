@@ -615,16 +615,19 @@ const DNAMES={easy:'쉬움',med:'보통',hard:'어려움'};
 
 function selDiff(d,el){curDiff=d;document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');}
 
+// 랜덤 정수 헬퍼
+function ri(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+
 const GAMES=[
-  /* ① 항아리 바둑돌 (2-3-4) */
+  /* ① 항아리 바둑돌 (2-3-4) — 돌 수 랜덤 */
   {id:'stones',title:'항아리 바둑돌',minDiff:'easy',
-    desc:d=>{const n={easy:20,med:38,hard:55}[d];return`항아리 바둑돌 <b style="color:var(--gold)">${n}개</b>. 번갈아 <b>2·3·4개</b>씩 가져가되 직전과 같은 수는 불가. 가져갈 수 없는 쪽이 집니다. A 먼저.`;},
-    init:d=>({n:{easy:20,med:38,hard:55}[d],last:null,turn:'A',done:false}),
+    desc:d=>`항아리 바둑돌 <b style="color:var(--gold)">N개 (랜덤)</b>. 번갈아 <b>2·3·4개</b>씩 가져가되 직전과 같은 수는 불가. 가져갈 수 없는 쪽이 집니다. A 먼저.`,
+    init:d=>{const ranges={easy:[15,25],med:[30,45],hard:[46,65]};const[lo,hi]=ranges[d];const n=ri(lo,hi);return{n,total:n,last:null,turn:'A',done:false};},
     render(st,el){
       let h='<div class="stone-row">';
       for(let i=0;i<Math.min(st.n,42);i++)h+='<span class="stone"></span>';
-      if(st.n>42)h+=`<span style="font-size:11px;color:var(--text2)">+${st.n-42}</span>`;
-      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono" style="color:var(--text)">${st.n}</b>개${st.last!=null?` · 직전: ${st.last}개`:''}`;
+      if(st.n>42)h+=`<span style="font-size:11px;color:var(--text2);margin-left:4px">+${st.n-42}</span>`;
+      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono" style="color:var(--text)">${st.n}</b>개 / 처음: <b>${st.total}</b>개${st.last!=null?` · 직전: ${st.last}개`:''}`;
       h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
       h+='</div>';
       if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';[2,3,4].forEach(n=>{const ok=n!==st.last&&n<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${n})"`:' disabled'}>${n}개</button>`;});h+='</div>';}
@@ -633,44 +636,46 @@ const GAMES=[
     ai(st){const ok=[2,3,4].filter(n=>n!==st.last&&n<=st.n);if(!ok.length)return null;for(const c of ok){const l=st.n-c;if(l===0||![2,3,4].some(n=>n!==c&&n<=l))return c;}return ok[Math.floor(Math.random()*ok.length)];},
     step(st,n,byA){st.n-=n;st.last=n;const ok=[2,3,4].filter(x=>x!==n&&x<=st.n);if(st.n===0||ok.length===0)return byA?'win':'lose';return null;}
   },
-  /* ② 21 님 */
-  {id:'nim21',title:'21 님 게임',minDiff:'easy',
-    desc:d=>`숫자 <b style="color:var(--gold)">1~21</b>. 번갈아 <b>1·2·3개</b> 가져가며 <u>마지막을 가져가는 쪽이 집니다</u>. A 먼저.`,
-    init:d=>({n:21,turn:'A',done:false}),
-    render(st,el){
-      let h='<div class="stone-row">';for(let i=0;i<21;i++)h+=`<span class="stone${i>=(21-st.n)?' taken':''}"></span>`;
-      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개`;
-      h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
-      h+='</div>';
-      if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';[1,2,3].forEach(n=>{const ok=n<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${n})"`:' disabled'}>${n}개</button>`;});h+='</div>';}
-      el.innerHTML=h;
-    },
-    ai(st){const ok=[1,2,3].filter(n=>n<=st.n);if(!ok.length)return null;for(const c of ok){if((st.n-c-1)%4===0)return c;}return ok[Math.floor(Math.random()*ok.length)];},
-    step(st,n,byA){st.n-=n;if(st.n===0)return byA?'lose':'win';return null;}
-  },
-  /* ③ 성냥 (같은 수 연속 불가, 마지막 가져가면 승) */
-  {id:'match',title:'성냥개비 게임',minDiff:'med',
-    desc:d=>{const n={med:15,hard:25}[d]||15;return`성냥개비 <b style="color:var(--gold)">${n}개</b>. 번갈아 <b>1·2·3개</b> 가져가되 직전과 같은 수 연속 불가. <u>마지막을 가져가는 쪽이 이깁니다</u>. A 먼저.`;},
-    init:d=>({n:{med:15,hard:25}[d]||15,last:null,turn:'A',done:false}),
+  /* ② 님 게임 — 총 수·최대 픽 수 랜덤 */
+  {id:'nim21',title:'님 게임',minDiff:'easy',
+    desc:d=>`님 게임. 번갈아 <b>1~K개 (랜덤K)</b> 가져가며 <u>마지막을 가져가는 쪽이 집니다</u>. A 먼저.`,
+    init:d=>{const nR={easy:[14,24],med:[20,36],hard:[28,52]};const[nl,nh]=nR[d];const total=ri(nl,nh);const maxPick=Math.min(ri(2,5),total-1);return{n:total,total,maxPick,turn:'A',done:false};},
     render(st,el){
       let h='<div class="stone-row">';
-      for(let i=0;i<Math.min(st.n,25);i++)h+=`<span style="display:inline-block;width:5px;height:22px;background:var(--gold);border-radius:2px;margin:0 1px"></span>`;
-      if(st.n>25)h+=`<span style="font-size:11px;color:var(--text2);margin-left:4px">+${st.n-25}</span>`;
-      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개${st.last!=null?` · 직전: ${st.last}`:''}`;
+      for(let i=0;i<st.total;i++)h+=`<span class="stone${i>=(st.total-st.n)?'':' taken'}"></span>`;
+      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개 / 최대 <b>${st.maxPick}</b>개씩`;
       h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
       h+='</div>';
-      if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';[1,2,3].forEach(n=>{const ok=n!==st.last&&n<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${n})"`:' disabled'}>${n}개</button>`;});h+='</div>';}
+      if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';for(let k=1;k<=st.maxPick;k++){const ok=k<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${k})"`:' disabled'}>${k}개</button>`;}h+='</div>';}
       el.innerHTML=h;
     },
-    ai(st){const ok=[1,2,3].filter(n=>n!==st.last&&n<=st.n);if(!ok.length)return null;if(ok.includes(st.n))return st.n;return ok[Math.floor(Math.random()*ok.length)];},
-    step(st,n,byA){st.n-=n;st.last=n;const ok=[1,2,3].filter(x=>x!==n&&x<=st.n);if(st.n===0)return byA?'win':'lose';if(ok.length===0)return byA?'win':'lose';return null;}
+    ai(st){const ok=[];for(let k=1;k<=st.maxPick;k++){if(k<=st.n)ok.push(k);}if(!ok.length)return null;const mod=st.maxPick+1;for(const c of ok){if((st.n-c-1)%mod===0)return c;}return ok[Math.floor(Math.random()*ok.length)];},
+    step(st,n,byA){st.n-=n;if(st.n===0)return byA?'lose':'win';return null;}
   },
-  /* ④ 틱택토 */
-  {id:'ttt',title:'틱택토',minDiff:'easy',
-    desc:d=>'<b style="color:var(--gold)">3×3</b> 보드. 3개 연속 줄을 먼저 만드는 쪽이 승리. 당신은 <b>O</b>.',
-    init:d=>({board:Array(9).fill(0),turn:'A',done:false}),
+  /* ③ 성냥개비 — 총 수·최대 픽 수 랜덤, 연속 불가, 마지막 가져가면 승 */
+  {id:'match',title:'성냥개비 게임',minDiff:'med',
+    desc:d=>`성냥개비 <b style="color:var(--gold)">N개 (랜덤)</b>. 번갈아 <b>1~K개 (랜덤K)</b> 가져가되 직전과 같은 수 연속 불가. <u>마지막을 가져가는 쪽이 이깁니다</u>. A 먼저.`,
+    init:d=>{const nR={med:[12,20],hard:[22,35]};const[lo,hi]=nR[d]||[12,20];const n=ri(lo,hi);const maxPick=ri(2,4);return{n,total:n,maxPick,last:null,turn:'A',done:false};},
     render(st,el){
-      let h='<div style="display:inline-grid;grid-template-columns:repeat(3,52px);gap:6px;margin:10px 0">';
+      let h='<div class="stone-row">';
+      for(let i=0;i<Math.min(st.n,30);i++)h+=`<span style="display:inline-block;width:5px;height:22px;background:var(--gold);border-radius:2px;margin:0 1px"></span>`;
+      if(st.n>30)h+=`<span style="font-size:11px;color:var(--text2);margin-left:4px">+${st.n-30}</span>`;
+      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개 / 최대 <b>${st.maxPick}</b>개씩${st.last!=null?` · 직전: ${st.last}`:''}`;
+      h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
+      h+='</div>';
+      if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';for(let k=1;k<=st.maxPick;k++){const ok=k!==st.last&&k<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${k})"`:' disabled'}>${k}개</button>`;}h+='</div>';}
+      el.innerHTML=h;
+    },
+    ai(st){const ok=[];for(let k=1;k<=st.maxPick;k++){if(k!==st.last&&k<=st.n)ok.push(k);}if(!ok.length)return null;if(ok.includes(st.n))return st.n;return ok[Math.floor(Math.random()*ok.length)];},
+    step(st,n,byA){st.n-=n;st.last=n;const ok=[];for(let k=1;k<=st.maxPick;k++){if(k!==n&&k<=st.n)ok.push(k);}if(st.n===0)return byA?'win':'lose';if(ok.length===0)return byA?'win':'lose';return null;}
+  },
+  /* ④ 틱택토 — 선공 랜덤 */
+  {id:'ttt',title:'틱택토',minDiff:'easy',
+    desc:d=>`<b style="color:var(--gold)">3×3</b> 보드. 3개 연속 줄을 먼저 만드는 쪽이 승리. 당신은 <b>O</b>. (선공 랜덤)`,
+    init:d=>{const ft=Math.random()<0.5?'A':'B';return{board:Array(9).fill(0),turn:ft,firstTurn:ft,done:false};},
+    render(st,el){
+      let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">선공: ${st.firstTurn==='A'?'당신(O) 먼저':'컴퓨터(X) 먼저'}</div>`;
+      h+='<div style="display:inline-grid;grid-template-columns:repeat(3,52px);gap:6px;margin:4px 0 10px">';
       for(let i=0;i<9;i++){const v=st.board[i];const sym=v===1?'<span style="color:var(--red);font-size:22px;font-weight:700">O</span>':v===-1?'<span style="color:var(--blue);font-size:22px;font-weight:700">X</span>':'';const can=st.turn==='A'&&!st.done&&v===0;
         h+=`<div style="width:52px;height:52px;border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;cursor:${can?'pointer':'default'};background:var(--bg${can?'3':'4'});transition:background 0.1s" ${can?`onclick="mgTTT(${i})" onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background='var(--bg3)'"`:''}>${sym}</div>`;}
       h+='</div>';h+=st.done?'':st.turn==='A'?'<div style="font-size:12px;color:var(--gold)">▶ 칸을 선택하세요</div>':'<div style="font-size:12px;color:var(--red)">컴퓨터 중...</div>';
@@ -684,15 +689,17 @@ const GAMES=[
       let best=-Infinity,move=e[0];for(const i of e){b[i]=-1;const sc=mm(b,false);b[i]=0;if(sc>best){best=sc;move=i;}}return move;
     }
   },
-  /* ⑤ 커넥트4 */
+  /* ⑤ 커넥트4 — 보드 크기 랜덤 */
   {id:'c4',title:'커넥트 4',minDiff:'med',
-    desc:d=>'<b style="color:var(--gold)">6열×5행</b>. 열 선택 시 아래서 쌓임. <b>4개 연속</b> 먼저 만드는 쪽 승리. 당신은 🔴.',
-    init:d=>({board:Array(30).fill(0),cols:6,rows:5,turn:'A',done:false}),
+    desc:d=>`<b style="color:var(--gold)">열×행 (랜덤)</b> 보드. 열 선택 시 아래서 쌓임. <b>4개 연속</b> 먼저 만드는 쪽 승리. 당신은 🔴.`,
+    init:d=>{const cols=ri(5,7),rows=ri(4,6);return{board:Array(cols*rows).fill(0),cols,rows,turn:'A',done:false};},
     render(st,el){
-      const{board,cols,rows}=st;let h='<div style="display:inline-block;background:var(--bg3);padding:8px;border-radius:var(--radius-sm);margin:6px 0">';
-      for(let r=rows-1;r>=0;r--){h+='<div style="display:flex;gap:4px;margin-bottom:4px">';for(let c=0;c<cols;c++){const v=board[r*cols+c];const sym=v===1?'🔴':v===-1?'🔵':'';h+=`<div style="width:32px;height:32px;border-radius:50%;border:1px solid var(--border2);background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:16px">${sym}</div>`;}h+='</div>';}
+      const{board,cols,rows}=st;
+      let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:4px">보드: ${cols}열 × ${rows}행</div>`;
+      h+='<div style="display:inline-block;background:var(--bg3);padding:8px;border-radius:var(--radius-sm);margin:4px 0">';
+      for(let r=rows-1;r>=0;r--){h+='<div style="display:flex;gap:4px;margin-bottom:4px">';for(let c=0;c<cols;c++){const v=board[r*cols+c];const sym=v===1?'🔴':v===-1?'🔵':'';h+=`<div style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border2);background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:14px">${sym}</div>`;}h+='</div>';}
       h+='</div>';
-      if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';for(let c=0;c<cols;c++){const can=board[(rows-1)*cols+c]===0;h+=`<button class="btn${can?' btn-gold':''}" style="min-width:36px;padding:4px 8px" ${can?`onclick="mgC4(${c})"`:' disabled'}>${c+1}</button>`;}h+='</div>';}
+      if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';for(let c=0;c<cols;c++){const can=board[(rows-1)*cols+c]===0;h+=`<button class="btn${can?' btn-gold':''}" style="min-width:30px;padding:4px 6px" ${can?`onclick="mgC4(${c})"`:' disabled'}>${c+1}</button>`;}h+='</div>';}
       h+=st.done?'':st.turn==='A'?'<div style="font-size:12px;color:var(--gold);margin-top:4px">▶ 열 번호 선택</div>':'<div style="font-size:12px;color:var(--red)">컴퓨터 중...</div>';
       el.innerHTML=h;
     },
@@ -706,31 +713,33 @@ const GAMES=[
       return empty[Math.floor(Math.random()*empty.length)];
     }
   },
-  /* ⑥ 초콜릿 촘프 */
+  /* ⑥ 초콜릿 촘프 — 보드 행·열 랜덤 */
   {id:'chomp',title:'초콜릿 촘프',minDiff:'easy',
-    desc:d=>'<b style="color:var(--gold)">4×5</b> 초콜릿. 칸 선택 시 오른쪽·아래 제거. <u>독약(☠) 먹는 쪽 집니다</u>. A 먼저.',
-    init:d=>{const g=[];for(let r=0;r<4;r++){g.push([]);for(let c=0;c<5;c++)g[r].push(1);}return{g,turn:'A',done:false};},
+    desc:d=>`<b style="color:var(--gold)">행×열 (랜덤)</b> 초콜릿. 칸 선택 시 오른쪽·아래 제거. <u>독약(☠) 먹는 쪽 집니다</u>. A 먼저.`,
+    init:d=>{const rR={easy:[3,4],med:[4,5],hard:[5,6]};const cR={easy:[4,5],med:[5,7],hard:[7,9]};const rows=ri(rR[d][0],rR[d][1]),cols=ri(cR[d][0],cR[d][1]);const g=[];for(let r=0;r<rows;r++){g.push([]);for(let c=0;c<cols;c++)g[r].push(1);}return{g,rows,cols,turn:'A',done:false};},
     render(st,el){
-      let h='<div style="display:inline-block;background:var(--bg3);padding:8px;border-radius:var(--radius-sm);margin:6px 0">';
-      for(let r=0;r<4;r++){h+='<div style="display:flex;gap:4px;margin-bottom:4px">';for(let c=0;c<5;c++){if(!st.g[r][c]){h+='<div style="width:30px;height:30px;border-radius:4px;background:var(--bg4);border:1px solid var(--border)"></div>';continue;}const p=r===0&&c===0;const bg=p?'background:var(--red-dim);border:1px solid var(--red)':'background:var(--gold-dim);border:1px solid var(--gold)';if(st.turn==='A'&&!st.done)h+=`<div style="width:30px;height:30px;border-radius:4px;cursor:pointer;${bg};display:flex;align-items:center;justify-content:center;font-size:13px" onclick="mgChomp(${r},${c})" onmouseenter="this.style.opacity='.7'" onmouseleave="this.style.opacity='1'">${p?'☠':''}</div>`;else h+=`<div style="width:30px;height:30px;border-radius:4px;${bg};display:flex;align-items:center;justify-content:center;font-size:13px">${p?'☠':''}</div>`;}h+='</div>';}
+      const{rows,cols}=st;
+      let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:4px">보드: ${rows}행 × ${cols}열</div>`;
+      h+='<div style="display:inline-block;background:var(--bg3);padding:8px;border-radius:var(--radius-sm);margin:4px 0">';
+      for(let r=0;r<rows;r++){h+='<div style="display:flex;gap:4px;margin-bottom:4px">';for(let c=0;c<cols;c++){if(!st.g[r][c]){h+='<div style="width:28px;height:28px;border-radius:4px;background:var(--bg4);border:1px solid var(--border)"></div>';continue;}const p=r===0&&c===0;const bg=p?'background:var(--red-dim);border:1px solid var(--red)':'background:var(--gold-dim);border:1px solid var(--gold)';if(st.turn==='A'&&!st.done)h+=`<div style="width:28px;height:28px;border-radius:4px;cursor:pointer;${bg};display:flex;align-items:center;justify-content:center;font-size:12px" onclick="mgChomp(${r},${c})" onmouseenter="this.style.opacity='.7'" onmouseleave="this.style.opacity='1'">${p?'☠':''}</div>`;else h+=`<div style="width:28px;height:28px;border-radius:4px;${bg};display:flex;align-items:center;justify-content:center;font-size:12px">${p?'☠':''}</div>`;}h+='</div>';}
       h+='</div>';h+=st.done?'':st.turn==='A'?'<div style="font-size:12px;color:var(--gold)">▶ 칸을 선택하세요</div>':'<div style="font-size:12px;color:var(--red)">컴퓨터 생각 중...</div>';
       el.innerHTML=h;
     },
-    ai(st){const m=[];for(let r=0;r<4;r++)for(let c=0;c<5;c++)if(st.g[r][c]&&!(r===0&&c===0))m.push([r,c]);return m.length?m[Math.floor(Math.random()*m.length)]:[0,0];}
+    ai(st){const{rows,cols}=st;const m=[];for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(st.g[r][c]&&!(r===0&&c===0))m.push([r,c]);return m.length?m[Math.floor(Math.random()*m.length)]:[0,0];}
   },
-  /* ⑦ 돌 더미 나누기 */
+  /* ⑦ 돌 더미 나누기 — 더미 개수·크기 랜덤 */
   {id:'split',title:'돌 더미 나누기',minDiff:'med',
-    desc:d=>{const n={med:14,hard:22}[d]||14;return`돌 더미 1개 (<b style="color:var(--gold)">${n}개</b>). 번갈아 <u>불같지 않은 두 더미</u>로 나누기. 나눌 수 없는 쪽이 집니다. A 먼저.`;},
-    init:d=>({piles:[{med:14,hard:22}[d]||14],turn:'A',done:false}),
+    desc:d=>`돌 더미들 (랜덤 개수·크기). 번갈아 <u>불같지 않은 두 더미</u>로 나누기. 나눌 수 없는 쪽이 집니다. A 먼저.`,
+    init:d=>{const numPiles=ri(1,3);const sR={med:[8,18],hard:[15,28]};const[sl,sh]=sR[d]||[8,18];const piles=[];for(let i=0;i<numPiles;i++)piles.push(ri(sl,sh));return{piles,turn:'A',done:false};},
     render(st,el){
       let h='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">';
       st.piles.forEach((p,i)=>{h+=`<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:8px 12px;text-align:center"><div class="mono" style="font-size:16px;font-weight:700">${p}</div><div style="font-size:10px;color:var(--text3)">더미${i+1}</div></div>`;});
       h+='</div>';
       const canSplit=st.piles.some(p=>p>=3);
       if(st.turn==='A'&&!st.done&&canSplit){
-        h+=`<div style="font-size:11px;color:var(--text3);margin-bottom:6px">나눌 더미 · 숫자1 · 숫자2 입력</div>
+        h+=`<div style="font-size:11px;color:var(--text3);margin-bottom:6px">나눌 더미 · 숫자1 · 숫자2 입력 (합=더미크기, 두 수 달라야 함)</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="sp-pile" style="width:100px">${st.piles.map((p,i)=>p>=3?`<option value="${i}">더미${i+1}(${p}개)</option>`:'').join('')}</select>
+          <select id="sp-pile" style="width:110px">${st.piles.map((p,i)=>p>=3?`<option value="${i}">더미${i+1}(${p}개)</option>`:'').join('')}</select>
           <input type="number" id="sp-a" placeholder="숫자1" min="1" style="width:80px">
           <input type="number" id="sp-b" placeholder="숫자2" min="1" style="width:80px">
           <button class="btn btn-gold" onclick="mgSplit()">나누기</button>
@@ -741,23 +750,26 @@ const GAMES=[
     },
     ai(st){for(const[i,p] of st.piles.entries()){if(p>=3){for(let a=1;a<p;a++){const b=p-a;if(a!==b&&a>=1&&b>=1)return[i,a,b];}}}return null;}
   },
-  /* ⑧ 바이너리 님 (하드) */
+  /* ⑧ 바이너리 님 — 더미 개수·크기 랜덤, XOR 전략 AI */
   {id:'bnim',title:'바이너리 님',minDiff:'hard',
-    desc:d=>`세 개의 돌 더미 A(<b style="color:var(--gold)">5</b>개) B(<b style="color:var(--gold)">7</b>개) C(<b style="color:var(--gold)">9</b>개). 번갈아 <u>한 더미에서 원하는 만큼</u> 가져가기(최소1개). <u>마지막 돌을 가져가는 쪽이 이깁니다</u>. A 먼저.`,
-    init:d=>({piles:[5,7,9],turn:'A',done:false}),
+    desc:d=>`여러 돌 더미 (랜덤 개수·크기). 번갈아 <u>한 더미에서 원하는 만큼</u> 가져가기(최소1개). <u>마지막 돌을 가져가는 쪽이 이깁니다</u>. A 먼저.`,
+    init:d=>{const numPiles=ri(2,4);const piles=[];for(let i=0;i<numPiles;i++)piles.push(ri(3,15));return{piles,turn:'A',done:false};},
     render(st,el){
-      let h='<div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0">';
-      ['A','B','C'].forEach((lbl,i)=>{
+      const labels='ABCDE'.split('');
+      let h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">';
+      st.piles.forEach((p,i)=>{
         h+=`<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 14px;text-align:center;min-width:70px">
-          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">더미 ${lbl}</div>
-          <div class="stone-row" style="justify-content:center">`;
-        for(let j=0;j<st.piles[i];j++)h+='<span class="stone" style="width:16px;height:16px"></span>';
-        h+=`</div><div class="mono" style="font-size:14px;font-weight:700;margin-top:4px">${st.piles[i]}</div></div>`;
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">더미 ${labels[i]}</div>
+          <div class="stone-row" style="justify-content:center;flex-wrap:wrap;max-width:80px">`;
+        for(let j=0;j<Math.min(p,12);j++)h+='<span class="stone" style="width:14px;height:14px"></span>';
+        if(p>12)h+=`<span style="font-size:10px;color:var(--text2)">+${p-12}</span>`;
+        h+=`</div><div class="mono" style="font-size:14px;font-weight:700;margin-top:4px">${p}</div></div>`;
       });
       h+='</div>';
       if(st.turn==='A'&&!st.done){
+        const opts=st.piles.map((p,i)=>`<option value="${i}">더미 ${labels[i]}(${p}개)</option>`).join('');
         h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-          <select id="bn-pile" style="width:110px"><option value="0">더미 A(${st.piles[0]}개)</option><option value="1">더미 B(${st.piles[1]}개)</option><option value="2">더미 C(${st.piles[2]}개)</option></select>
+          <select id="bn-pile" style="width:130px">${opts}</select>
           <input type="number" id="bn-n" placeholder="가져갈 수" min="1" style="width:100px">
           <button class="btn btn-gold" onclick="mgBNim()">가져가기</button>
         </div>`;
@@ -766,11 +778,9 @@ const GAMES=[
       el.innerHTML=h;
     },
     ai(st){
-      // XOR 전략
       const xor=st.piles.reduce((a,b)=>a^b,0);
-      if(xor!==0){for(let i=0;i<3;i++){const target=st.piles[i]^xor;if(target<st.piles[i])return[i,st.piles[i]-target];}}
-      // XOR=0 이면 최소 이동
-      for(let i=0;i<3;i++){if(st.piles[i]>0)return[i,1];}return null;
+      if(xor!==0){for(let i=0;i<st.piles.length;i++){const target=st.piles[i]^xor;if(target<st.piles[i])return[i,st.piles[i]-target];}}
+      for(let i=0;i<st.piles.length;i++){if(st.piles[i]>0)return[i,1];}return null;
     }
   },
 ];
@@ -794,15 +804,25 @@ function openMG(){
 
 function startGame(id){
   const g=GAMES.find(x=>x.id===id);
-  mg={game:g,st:g.init(curDiff),done:false,diff:curDiff};
+  const st=g.init(curDiff);
+  mg={game:g,st,done:false,diff:curDiff};
   closeModal('mg-select-modal');
   document.getElementById('mg-title').textContent=g.title;
   document.getElementById('mg-reward-label').textContent=`${DNAMES[curDiff]} · 승리 시 ${fmtFull(REWARDS[curDiff])} 획득`;
   document.getElementById('mg-desc').innerHTML=g.desc(curDiff);
   document.getElementById('mg-result').textContent='';
   document.getElementById('mg-log').innerHTML='';
-  g.render(mg.st,document.getElementById('mg-board'));
   document.getElementById('mg-modal').classList.add('open');
+  g.render(st,document.getElementById('mg-board'));
+  // 틱택토: 컴퓨터 선공이면 즉시 AI 이동
+  if(id==='ttt'&&st.firstTurn==='B'){
+    setTimeout(()=>{
+      if(mg.done)return;
+      const m=g.ai(st);
+      if(m!==null){st.board[m]=-1;addLog('컴퓨터(B) 선공: '+(m+1)+'번');}
+      st.turn='A';g.render(st,document.getElementById('mg-board'));
+    },500);
+  }
 }
 
 /* ── nim 계열 공통 ── */
@@ -859,16 +879,17 @@ window.mgC4=function(c){
 window.mgChomp=function(r,c){
   const g=mg.game,st=mg.st;if(st.turn!=='A'||mg.done)return;
   if(r===0&&c===0){endMG(false);return;}
-  for(let rr=r;rr<4;rr++)for(let cc=c;cc<5;cc++)st.g[rr][cc]=0;
+  const rows=st.rows,cols=st.cols;
+  for(let rr=r;rr<rows;rr++)for(let cc=c;cc<cols;cc++)st.g[rr][cc]=0;
   addLog(`당신(A): (${r+1}행,${c+1}열)`);
-  let left=0;for(let rr=0;rr<4;rr++)for(let cc=0;cc<5;cc++)if(st.g[rr][cc])left++;
+  let left=0;for(let rr=0;rr<rows;rr++)for(let cc=0;cc<cols;cc++)if(st.g[rr][cc])left++;
   if(left===1){endMG(false);return;}
   st.turn='B';g.render(st,document.getElementById('mg-board'));
   setTimeout(()=>{
     const[ar,ac]=g.ai(st);if(ar===0&&ac===0){endMG(true);return;}
-    for(let rr=ar;rr<4;rr++)for(let cc=ac;cc<5;cc++)st.g[rr][cc]=0;
+    for(let rr=ar;rr<rows;rr++)for(let cc=ac;cc<cols;cc++)st.g[rr][cc]=0;
     addLog(`컴퓨터(B): (${ar+1}행,${ac+1}열)`);
-    let left2=0;for(let rr=0;rr<4;rr++)for(let cc=0;cc<5;cc++)if(st.g[rr][cc])left2++;
+    let left2=0;for(let rr=0;rr<rows;rr++)for(let cc=0;cc<cols;cc++)if(st.g[rr][cc])left2++;
     if(left2===1){endMG(true);return;}
     st.turn='A';g.render(st,document.getElementById('mg-board'));
   },700);
