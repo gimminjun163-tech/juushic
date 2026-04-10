@@ -103,6 +103,12 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none}
 .game-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;transition:border-color 0.15s}
 .game-card:hover{border-color:var(--accent)}
+.auto-btn{background:var(--bg3);border:1.5px solid var(--green);border-radius:20px;padding:4px 14px;cursor:pointer;font-size:11px;color:var(--green);font-family:inherit;font-weight:600;transition:all 0.15s}
+.auto-btn.running{background:var(--green);color:#fff;animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.boost-btn{background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:4px 10px;cursor:pointer;font-size:11px;color:var(--accent);font-family:inherit;font-weight:600;transition:all 0.15s;white-space:nowrap}
+.boost-btn:hover{background:var(--accent);color:#fff}
+.boost-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:var(--accent-dim);color:var(--accent);font-family:'DM Mono',monospace;font-weight:600;margin-left:4px}
 </style>
 </head>
 <body>
@@ -127,7 +133,11 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
           <div id="p-phase"></div>
         </div>
       </div>
-      <button class="btn btn-primary" onclick="nextDay()">다음 날로 →</button>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="nextDay()">다음 날로 →</button>
+        <button class="auto-btn" id="auto-day-btn" onclick="toggleAutoDay()">⏩ 자동</button>
+        <span style="font-size:11px;color:var(--text3)" id="auto-day-status"></span>
+      </div>
     </div>
     <div class="grid3" style="margin-bottom:10px">
       <div class="metric"><div class="lbl">보유 현금</div><div class="val" id="p-cash"></div></div>
@@ -214,6 +224,33 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
     <div class="card-title">저장 슬롯</div>
     <div style="display:flex;flex-direction:column;gap:8px" id="save-slots"></div>
   </div>
+  <div class="card" style="margin-top:4px">
+    <div class="card-title">⚙️ 자동 날짜 속도 설정</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">1일 간격:</span>
+      <input type="range" id="auto-speed-slider" min="1" max="10" value="3" step="1" style="width:140px" oninput="updateAutoSpeed(this.value)">
+      <span id="auto-speed-label" class="mono" style="font-size:12px;color:var(--text);min-width:40px">0.3초</span>
+    </div>
+  </div>
+  <div class="card" style="margin-top:4px">
+    <div class="card-title">📈 주식 국면 지속 기간 설정</div>
+    <div style="color:var(--text2);font-size:12px;margin-bottom:10px">상승기/하락기/중립기 최소 지속 일수와 변동 확률을 조정합니다.</div>
+    <div class="grid3" style="gap:8px;margin-bottom:10px">
+      <div class="metric">
+        <div class="lbl">최소 지속 (일)</div>
+        <input type="number" id="cfg-min-phase" min="1" max="30" value="5" style="margin-top:4px;font-size:13px" oninput="savePhaseCfg()">
+      </div>
+      <div class="metric">
+        <div class="lbl">변동 확률 (%)</div>
+        <input type="number" id="cfg-change-prob" min="1" max="50" value="18" style="margin-top:4px;font-size:13px" oninput="savePhaseCfg()">
+      </div>
+      <div class="metric">
+        <div class="lbl">섹터 동조율 (%)</div>
+        <input type="number" id="cfg-sector-sync" min="0" max="100" value="70" style="margin-top:4px;font-size:13px" oninput="savePhaseCfg()">
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">현재: 최소 <span id="cfg-preview" style="color:var(--text)"></span></div>
+  </div>
   <div class="card" style="border-color:var(--red);margin-top:4px">
     <div class="card-title" style="color:var(--red)">위험 구역</div>
     <div style="color:var(--text2);font-size:12px;margin-bottom:12px">현재 게임을 초기 상태로 되돌립니다. 되돌릴 수 없습니다.</div>
@@ -259,13 +296,35 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 
 <!-- 미니게임 선택 모달 -->
 <div class="modal-overlay" id="mg-select-modal">
-  <div class="modal" style="max-width:520px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+  <div class="modal" style="max-width:560px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div>
         <h3>게임 선택</h3>
         <div id="mg-sel-sub" style="font-size:12px;color:var(--text2);margin-top:2px"></div>
       </div>
       <button class="btn" onclick="closeModal('mg-select-modal')" style="padding:4px 10px">✕</button>
+    </div>
+    <!-- 선후공 / 승리조건 설정 -->
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-family:'DM Mono',monospace;letter-spacing:0.5px">게임 조건 설정</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">선후공</div>
+          <div style="display:flex;gap:4px">
+            <button id="turn-rand" class="btn" style="font-size:11px;padding:3px 8px;background:var(--accent);border-color:var(--accent);color:#fff" onclick="setTurnOpt('random',this)">랜덤</button>
+            <button id="turn-first" class="btn" style="font-size:11px;padding:3px 8px" onclick="setTurnOpt('first',this)">내가 먼저</button>
+            <button id="turn-second" class="btn" style="font-size:11px;padding:3px 8px" onclick="setTurnOpt('second',this)">내가 나중</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">승리 조건</div>
+          <div style="display:flex;gap:4px">
+            <button id="win-rand" class="btn" style="font-size:11px;padding:3px 8px;background:var(--accent);border-color:var(--accent);color:#fff" onclick="setWinOpt('random',this)">랜덤</button>
+            <button id="win-last-win" class="btn" style="font-size:11px;padding:3px 8px" onclick="setWinOpt('lastWin',this)">마지막=승</button>
+            <button id="win-last-lose" class="btn" style="font-size:11px;padding:3px 8px" onclick="setWinOpt('lastLose',this)">마지막=패</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="mg-game-list" style="display:flex;flex-direction:column;gap:8px"></div>
   </div>
@@ -279,8 +338,12 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
         <h3 id="mg-title"></h3>
         <div id="mg-reward-label" style="font-size:11px;color:var(--text2);margin-top:2px"></div>
       </div>
-      <button class="btn" onclick="closeModal('mg-modal')" style="padding:4px 10px">✕</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="boost-btn" id="mg-boost-btn" onclick="boostGame()" title="범위 확장으로 난이도 올리고 상금 ↑">⬆ 범위 확장</button>
+        <button class="btn" onclick="closeModal('mg-modal')" style="padding:4px 10px">✕</button>
+      </div>
     </div>
+    <div id="mg-boost-info" style="font-size:11px;color:var(--accent);margin-bottom:6px;display:none"></div>
     <div id="mg-desc" style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.8;background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;border:1px solid var(--border)"></div>
     <div id="mg-board"></div>
     <div id="mg-result" style="min-height:22px;font-size:14px;font-weight:700;margin:10px 0"></div>
@@ -455,23 +518,69 @@ function renderProfile(){
   }).join('');
 }
 
+/* ═══ 자동 날짜 ═══ */
+let autoTimer=null;
+let autoSpeed=300;// ms
+
+function toggleAutoDay(){
+  if(autoTimer){
+    clearInterval(autoTimer);autoTimer=null;
+    document.getElementById('auto-day-btn').textContent='⏩ 자동';
+    document.getElementById('auto-day-btn').classList.remove('running');
+    document.getElementById('auto-day-status').textContent='';
+  } else {
+    document.getElementById('auto-day-btn').textContent='⏹ 정지';
+    document.getElementById('auto-day-btn').classList.add('running');
+    autoTimer=setInterval(()=>{
+      nextDay();
+      document.getElementById('auto-day-status').textContent=G.day+'일차';
+    },autoSpeed);
+  }
+}
+function updateAutoSpeed(v){
+  // v: 1~10 → 1000ms~100ms
+  autoSpeed=Math.round(1100-v*100);
+  const sec=(autoSpeed/1000).toFixed(1);
+  document.getElementById('auto-speed-label').textContent=sec+'초';
+  if(autoTimer){clearInterval(autoTimer);autoTimer=setInterval(()=>{nextDay();document.getElementById('auto-day-status').textContent=G.day+'일차';},autoSpeed);}
+}
+
+/* ═══ 국면 설정 ═══ */
+let phaseCfg={minDays:5,changeProb:0.18,sectorSync:0.7};
+
+function savePhaseCfg(){
+  const minD=parseInt(document.getElementById('cfg-min-phase').value)||5;
+  const prob=parseInt(document.getElementById('cfg-change-prob').value)||18;
+  const sync=parseInt(document.getElementById('cfg-sector-sync').value)||70;
+  phaseCfg={minDays:Math.max(1,minD),changeProb:Math.min(0.5,prob/100),sectorSync:Math.min(1,sync/100)};
+  try{localStorage.setItem('sg4_cfg',JSON.stringify(phaseCfg));}catch(e){}
+  document.getElementById('cfg-preview').textContent=phaseCfg.minDays+'일, 변동'+prob+'%, 동조'+sync+'%';
+}
+(function loadCfg(){
+  try{const d=localStorage.getItem('sg4_cfg');if(d){phaseCfg=JSON.parse(d);
+    const el1=document.getElementById('cfg-min-phase');
+    const el2=document.getElementById('cfg-change-prob');
+    const el3=document.getElementById('cfg-sector-sync');
+    if(el1)el1.value=phaseCfg.minDays;
+    if(el2)el2.value=Math.round(phaseCfg.changeProb*100);
+    if(el3)el3.value=Math.round(phaseCfg.sectorSync*100);
+  }}catch(e){}
+  setTimeout(()=>{
+    const el=document.getElementById('cfg-preview');
+    if(el)el.textContent=phaseCfg.minDays+'일, 변동'+Math.round(phaseCfg.changeProb*100)+'%, 동조'+Math.round(phaseCfg.sectorSync*100)+'%';
+  },100);
+})();
+
 /* ═══ 다음 날 ═══ */
 function nextDay(){
   G.day++;
   if(G.loan>0){const r=G.loanType==='compound'?G.loanCR:G.loanSR;G.loan=Math.round(G.loan*(1+r/365));}
-  // 섹터별 phase 동조 처리
   const sectorLeader={};
   G.stocks.forEach(s=>{if(!sectorLeader[s.sector])sectorLeader[s.sector]=s.phase;});
   G.stocks.forEach(s=>{
     s.phaseDay++;
-    if(s.phaseDay>=5&&Math.random()<0.18){
-      if(Math.random()<0.7){
-        // 70% 확률로 같은 섹터 리더 따라감
-        s.phase=sectorLeader[s.sector];
-      } else {
-        s.phase=rPh();
-      }
-      // 새 phase로 바뀌면 섹터 리더 업데이트
+    if(s.phaseDay>=phaseCfg.minDays&&Math.random()<phaseCfg.changeProb){
+      s.phase=Math.random()<phaseCfg.sectorSync?sectorLeader[s.sector]:rPh();
       sectorLeader[s.sector]=s.phase;
       s.phaseDay=0;
     }
@@ -483,7 +592,8 @@ function nextDay(){
     s.price=Math.max(unit,Math.round(raw/unit)*unit);
     s.history.push(s.price);
   });
-  sl();renderProfile();
+  sl();
+  if(document.getElementById('sec-profile').classList.contains('active'))renderProfile();
   if(document.getElementById('sec-market').classList.contains('active'))renderMarket();
 }
 
@@ -594,6 +704,15 @@ function setMsg(t,c){const el=document.getElementById('m-msg');el.textContent=t;
 
 /* ═══ 저장 ═══ */
 function renderSave(){
+  // cfg 현재값 반영
+  try{
+    document.getElementById('cfg-min-phase').value=phaseCfg.minDays;
+    document.getElementById('cfg-change-prob').value=Math.round(phaseCfg.changeProb*100);
+    document.getElementById('cfg-sector-sync').value=Math.round(phaseCfg.sectorSync*100);
+    document.getElementById('cfg-preview').textContent=phaseCfg.minDays+'일, 변동'+Math.round(phaseCfg.changeProb*100)+'%, 동조'+Math.round(phaseCfg.sectorSync*100)+'%';
+    const sv=parseInt(document.getElementById('auto-speed-slider').value)||3;
+    document.getElementById('auto-speed-label').textContent=(1.1-sv*0.1).toFixed(1)+'초';
+  }catch(e){}
   document.getElementById('save-slots').innerHTML=G.saves.map((s,i)=>`
     <div class="save-slot"><div style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-weight:700;font-size:12px">슬롯 ${i+1}</div>
@@ -612,69 +731,118 @@ function doReset(){if(!confirm('정말 초기화하시겠습니까?'))return;G=i
 ═══════════════════════════════════ */
 const REWARDS={easy:500,med:1000,hard:3000};
 const DNAMES={easy:'쉬움',med:'보통',hard:'어려움'};
+// 게임 조건 옵션 (랜덤/고정)
+let turnOpt='random'; // 'random'|'first'|'second'
+let winOpt='random';  // 'random'|'lastWin'|'lastLose'
+function setTurnOpt(v,el){turnOpt=v;document.querySelectorAll('#turn-rand,#turn-first,#turn-second').forEach(b=>{b.style.background='';b.style.borderColor='';b.style.color='';b.className='btn';});el.style.background='var(--accent)';el.style.borderColor='var(--accent)';el.style.color='#fff';}
+function setWinOpt(v,el){winOpt=v;document.querySelectorAll('#win-rand,#win-last-win,#win-last-lose').forEach(b=>{b.style.background='';b.style.borderColor='';b.style.color='';b.className='btn';});el.style.background='var(--accent)';el.style.borderColor='var(--accent)';el.style.color='#fff';}
 
 function selDiff(d,el){curDiff=d;document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');}
 
 // 랜덤 정수 헬퍼
 function ri(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
 
+// 공통 nim step 함수 (lastTakerWins 인자 지원)
+function nimStep(st,n,byA,ltw,choices){
+  st.n-=n;if(st.last!==undefined)st.last=n;if(st.maxPick!==undefined){/* ok */}
+  const next = choices
+    ? choices.filter(x=>(st.last!==undefined?x!==st.last:true)&&x<=st.n)
+    : (()=>{const a=[];for(let k=1;k<=(st.maxPick||3);k++){if((st.last===undefined||k!==st.last)&&k<=st.n)a.push(k);}return a;})();
+  if(st.n===0){
+    // 마지막을 가져간 사람 = byA
+    return ltw?(byA?'win':'lose'):(byA?'lose':'win');
+  }
+  if(next.length===0) return byA?'win':'lose'; // 상대가 못 가져감
+  return null;
+}
+
 const GAMES=[
-  /* ① 항아리 바둑돌 (2-3-4) — 돌 수 랜덤 */
+  /* ① 항아리 바둑돌 (2-3-4) */
   {id:'stones',title:'항아리 바둑돌',minDiff:'easy',
-    desc:d=>`항아리 바둑돌 <b style="color:var(--gold)">N개 (랜덤)</b>. 번갈아 <b>2·3·4개</b>씩 가져가되 직전과 같은 수는 불가. 가져갈 수 없는 쪽이 집니다. A 먼저.`,
-    init:d=>{const ranges={easy:[15,25],med:[30,45],hard:[46,65]};const[lo,hi]=ranges[d];const n=ri(lo,hi);return{n,total:n,last:null,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>{
+      const n={easy:[15,25],med:[30,45],hard:[46,65]}[d];
+      const ftxt=fia===false?'컴퓨터 선공':'내가 선공';
+      const wtxt=ltw===false?'마지막 가져가면 패':'마지막 가져가면 승';
+      return `바둑돌 <b style="color:var(--gold)">N개 (랜덤)</b>. 번갈아 <b>2·3·4개</b>씩 가져가되 직전과 같은 수는 불가. <b>${ftxt}</b> · <b>${wtxt}</b>.`;
+    },
+    init:(d,fia,ltw)=>{const ranges={easy:[15,25],med:[30,45],hard:[46,65]};const[lo,hi]=ranges[d];const n=ri(lo,hi);const turn=fia===false?'B':'A';return{n,total:n,last:null,turn,done:false,ltw:ltw!==false};},
     render(st,el){
       let h='<div class="stone-row">';
       for(let i=0;i<Math.min(st.n,42);i++)h+='<span class="stone"></span>';
       if(st.n>42)h+=`<span style="font-size:11px;color:var(--text2);margin-left:4px">+${st.n-42}</span>`;
-      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono" style="color:var(--text)">${st.n}</b>개 / 처음: <b>${st.total}</b>개${st.last!=null?` · 직전: ${st.last}개`:''}`;
+      const wlabel=st.ltw?'마지막=승':'마지막=패';
+      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono" style="color:var(--text)">${st.n}</b>개 / 처음: <b>${st.total}</b>개 · <span style="color:var(--accent)">${wlabel}</span>${st.last!=null?` · 직전: ${st.last}개`:''}`;
       h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
       h+='</div>';
       if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';[2,3,4].forEach(n=>{const ok=n!==st.last&&n<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${n})"`:' disabled'}>${n}개</button>`;});h+='</div>';}
       el.innerHTML=h;
     },
     ai(st){const ok=[2,3,4].filter(n=>n!==st.last&&n<=st.n);if(!ok.length)return null;for(const c of ok){const l=st.n-c;if(l===0||![2,3,4].some(n=>n!==c&&n<=l))return c;}return ok[Math.floor(Math.random()*ok.length)];},
-    step(st,n,byA){st.n-=n;st.last=n;const ok=[2,3,4].filter(x=>x!==n&&x<=st.n);if(st.n===0||ok.length===0)return byA?'win':'lose';return null;}
+    step(st,n,byA,ltw){st.last=n;return nimStep(st,n,byA,ltw??st.ltw,[2,3,4]);}
   },
-  /* ② 님 게임 — 총 수·최대 픽 수 랜덤 */
+  /* ② 님 게임 — 총 수·최대 픽 랜덤 */
   {id:'nim21',title:'님 게임',minDiff:'easy',
-    desc:d=>`님 게임. 번갈아 <b>1~K개 (랜덤K)</b> 가져가며 <u>마지막을 가져가는 쪽이 집니다</u>. A 먼저.`,
-    init:d=>{const nR={easy:[14,24],med:[20,36],hard:[28,52]};const[nl,nh]=nR[d];const total=ri(nl,nh);const maxPick=Math.min(ri(2,5),total-1);return{n:total,total,maxPick,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>{
+      const ftxt=fia===false?'컴퓨터 선공':'내가 선공';
+      const wtxt=ltw===false?'마지막 가져가면 패':'마지막 가져가면 승';
+      return `번갈아 <b>1~K개 (랜덤K)</b> 가져가기. <b>${ftxt}</b> · <b>${wtxt}</b>.`;
+    },
+    init:(d,fia,ltw)=>{const nR={easy:[14,24],med:[20,36],hard:[28,52]};const[nl,nh]=nR[d];const total=ri(nl,nh);const maxPick=Math.min(ri(2,5),total-1);const turn=fia===false?'B':'A';return{n:total,total,maxPick,turn,done:false,ltw:ltw!==false};},
     render(st,el){
       let h='<div class="stone-row">';
-      for(let i=0;i<st.total;i++)h+=`<span class="stone${i>=(st.total-st.n)?'':' taken'}"></span>`;
-      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개 / 최대 <b>${st.maxPick}</b>개씩`;
+      for(let i=0;i<Math.min(st.total,40);i++)h+=`<span class="stone${i>=(st.total-st.n)?'':' taken'}"></span>`;
+      if(st.total>40)h+=`<span style="font-size:10px;color:var(--text3);margin-left:4px">총${st.total}</span>`;
+      const wlabel=st.ltw?'마지막=승':'마지막=패';
+      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개 / 최대 <b>${st.maxPick}</b>개씩 · <span style="color:var(--accent)">${wlabel}</span>`;
       h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
       h+='</div>';
       if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';for(let k=1;k<=st.maxPick;k++){const ok=k<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${k})"`:' disabled'}>${k}개</button>`;}h+='</div>';}
       el.innerHTML=h;
     },
-    ai(st){const ok=[];for(let k=1;k<=st.maxPick;k++){if(k<=st.n)ok.push(k);}if(!ok.length)return null;const mod=st.maxPick+1;for(const c of ok){if((st.n-c-1)%mod===0)return c;}return ok[Math.floor(Math.random()*ok.length)];},
-    step(st,n,byA){st.n-=n;if(st.n===0)return byA?'lose':'win';return null;}
+    ai(st){const ok=[];for(let k=1;k<=st.maxPick;k++){if(k<=st.n)ok.push(k);}if(!ok.length)return null;
+      const mod=st.maxPick+1;
+      if(st.ltw){for(const c of ok){if((st.n-c)%mod===0)return c;}}
+      else{for(const c of ok){if((st.n-c-1)%mod===0)return c;}}
+      return ok[Math.floor(Math.random()*ok.length)];
+    },
+    step(st,n,byA,ltw){return nimStep(st,n,byA,ltw??st.ltw,null);}
   },
-  /* ③ 성냥개비 — 총 수·최대 픽 수 랜덤, 연속 불가, 마지막 가져가면 승 */
+  /* ③ 성냥개비 — 연속 불가 */
   {id:'match',title:'성냥개비 게임',minDiff:'med',
-    desc:d=>`성냥개비 <b style="color:var(--gold)">N개 (랜덤)</b>. 번갈아 <b>1~K개 (랜덤K)</b> 가져가되 직전과 같은 수 연속 불가. <u>마지막을 가져가는 쪽이 이깁니다</u>. A 먼저.`,
-    init:d=>{const nR={med:[12,20],hard:[22,35]};const[lo,hi]=nR[d]||[12,20];const n=ri(lo,hi);const maxPick=ri(2,4);return{n,total:n,maxPick,last:null,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>{
+      const ftxt=fia===false?'컴퓨터 선공':'내가 선공';
+      const wtxt=ltw===false?'마지막 가져가면 패':'마지막 가져가면 승';
+      return `성냥개비 <b style="color:var(--gold)">N개 (랜덤)</b>. 번갈아 <b>1~K개 (랜덤K)</b> 직전과 같은 수 연속 불가. <b>${ftxt}</b> · <b>${wtxt}</b>.`;
+    },
+    init:(d,fia,ltw)=>{const nR={med:[12,20],hard:[22,35]};const[lo,hi]=nR[d]||[12,20];const n=ri(lo,hi);const maxPick=ri(2,4);const turn=fia===false?'B':'A';return{n,total:n,maxPick,last:null,turn,done:false,ltw:ltw!==false};},
     render(st,el){
       let h='<div class="stone-row">';
       for(let i=0;i<Math.min(st.n,30);i++)h+=`<span style="display:inline-block;width:5px;height:22px;background:var(--gold);border-radius:2px;margin:0 1px"></span>`;
       if(st.n>30)h+=`<span style="font-size:11px;color:var(--text2);margin-left:4px">+${st.n-30}</span>`;
-      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개 / 최대 <b>${st.maxPick}</b>개씩${st.last!=null?` · 직전: ${st.last}`:''}`;
+      const wlabel=st.ltw?'마지막=승':'마지막=패';
+      h+=`</div><div style="font-size:12px;color:var(--text2);margin:6px 0">남은: <b class="mono">${st.n}</b>개 / 최대 <b>${st.maxPick}</b>개씩 · <span style="color:var(--accent)">${wlabel}</span>${st.last!=null?` · 직전: ${st.last}`:''}`;
       h+=st.turn==='A'?` <span style="color:var(--gold)">▶ 당신 차례</span>`:`<span style="color:var(--red)">컴퓨터 중...</span>`;
       h+='</div>';
       if(st.turn==='A'&&!st.done){h+='<div class="move-btns">';for(let k=1;k<=st.maxPick;k++){const ok=k!==st.last&&k<=st.n;h+=`<button class="btn${ok?' btn-gold':''}" ${ok?`onclick="mgNim(${k})"`:' disabled'}>${k}개</button>`;}h+='</div>';}
       el.innerHTML=h;
     },
-    ai(st){const ok=[];for(let k=1;k<=st.maxPick;k++){if(k!==st.last&&k<=st.n)ok.push(k);}if(!ok.length)return null;if(ok.includes(st.n))return st.n;return ok[Math.floor(Math.random()*ok.length)];},
-    step(st,n,byA){st.n-=n;st.last=n;const ok=[];for(let k=1;k<=st.maxPick;k++){if(k!==n&&k<=st.n)ok.push(k);}if(st.n===0)return byA?'win':'lose';if(ok.length===0)return byA?'win':'lose';return null;}
+    ai(st){const ok=[];for(let k=1;k<=st.maxPick;k++){if(k!==st.last&&k<=st.n)ok.push(k);}if(!ok.length)return null;if(st.ltw&&ok.includes(st.n))return st.n;return ok[Math.floor(Math.random()*ok.length)];},
+    step(st,n,byA,ltw){
+      const prev=st.last;st.last=n;
+      const newLtw=ltw??st.ltw;
+      st.n-=n;
+      const ok=[];for(let k=1;k<=st.maxPick;k++){if(k!==n&&k<=st.n)ok.push(k);}
+      if(st.n===0)return newLtw?(byA?'win':'lose'):(byA?'lose':'win');
+      if(ok.length===0)return byA?'win':'lose';
+      return null;
+    }
   },
-  /* ④ 틱택토 — 선공 랜덤 */
+  /* ④ 틱택토 */
   {id:'ttt',title:'틱택토',minDiff:'easy',
-    desc:d=>`<b style="color:var(--gold)">3×3</b> 보드. 3개 연속 줄을 먼저 만드는 쪽이 승리. 당신은 <b>O</b>. (선공 랜덤)`,
-    init:d=>{const ft=Math.random()<0.5?'A':'B';return{board:Array(9).fill(0),turn:ft,firstTurn:ft,done:false};},
+    desc:(d,fia,ltw)=>`<b style="color:var(--gold)">3×3</b> 보드. 3개 연속 줄을 먼저 만드는 쪽이 승리. 당신은 <b>O</b>. 선공: <b>${fia===false?'컴퓨터':'당신'}</b>.`,
+    init:(d,fia,ltw)=>{const ft=fia===false?'B':'A';return{board:Array(9).fill(0),turn:ft,firstTurn:ft,done:false};},
     render(st,el){
-      let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">선공: ${st.firstTurn==='A'?'당신(O) 먼저':'컴퓨터(X) 먼저'}</div>`;
+      let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">선공: ${st.firstTurn==='A'?'당신(O)':'컴퓨터(X)'}</div>`;
       h+='<div style="display:inline-grid;grid-template-columns:repeat(3,52px);gap:6px;margin:4px 0 10px">';
       for(let i=0;i<9;i++){const v=st.board[i];const sym=v===1?'<span style="color:var(--red);font-size:22px;font-weight:700">O</span>':v===-1?'<span style="color:var(--blue);font-size:22px;font-weight:700">X</span>':'';const can=st.turn==='A'&&!st.done&&v===0;
         h+=`<div style="width:52px;height:52px;border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;cursor:${can?'pointer':'default'};background:var(--bg${can?'3':'4'});transition:background 0.1s" ${can?`onclick="mgTTT(${i})" onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background='var(--bg3)'"`:''}>${sym}</div>`;}
@@ -691,8 +859,8 @@ const GAMES=[
   },
   /* ⑤ 커넥트4 — 보드 크기 랜덤 */
   {id:'c4',title:'커넥트 4',minDiff:'med',
-    desc:d=>`<b style="color:var(--gold)">열×행 (랜덤)</b> 보드. 열 선택 시 아래서 쌓임. <b>4개 연속</b> 먼저 만드는 쪽 승리. 당신은 🔴.`,
-    init:d=>{const cols=ri(5,7),rows=ri(4,6);return{board:Array(cols*rows).fill(0),cols,rows,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>`<b style="color:var(--gold)">열×행 (랜덤)</b> 보드. <b>4개 연속</b> 먼저 만드는 쪽 승리. 당신은 🔴. 선공: <b>${fia===false?'컴퓨터':'당신'}</b>.`,
+    init:(d,fia,ltw)=>{const cols=ri(5,7),rows=ri(4,6);const turn=fia===false?'B':'A';return{board:Array(cols*rows).fill(0),cols,rows,turn,done:false};},
     render(st,el){
       const{board,cols,rows}=st;
       let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:4px">보드: ${cols}열 × ${rows}행</div>`;
@@ -715,8 +883,8 @@ const GAMES=[
   },
   /* ⑥ 초콜릿 촘프 — 보드 행·열 랜덤 */
   {id:'chomp',title:'초콜릿 촘프',minDiff:'easy',
-    desc:d=>`<b style="color:var(--gold)">행×열 (랜덤)</b> 초콜릿. 칸 선택 시 오른쪽·아래 제거. <u>독약(☠) 먹는 쪽 집니다</u>. A 먼저.`,
-    init:d=>{const rR={easy:[3,4],med:[4,5],hard:[5,6]};const cR={easy:[4,5],med:[5,7],hard:[7,9]};const rows=ri(rR[d][0],rR[d][1]),cols=ri(cR[d][0],cR[d][1]);const g=[];for(let r=0;r<rows;r++){g.push([]);for(let c=0;c<cols;c++)g[r].push(1);}return{g,rows,cols,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>`<b style="color:var(--gold)">행×열 (랜덤)</b> 초콜릿. 칸 선택 시 오른쪽·아래 제거. <u>독약(☠) 먹는 쪽 집니다</u>. 선공: <b>${fia===false?'컴퓨터':'당신'}</b>.`,
+    init:(d,fia,ltw)=>{const rR={easy:[3,4],med:[4,5],hard:[5,6]};const cR={easy:[4,5],med:[5,7],hard:[7,9]};const rows=ri(rR[d][0],rR[d][1]),cols=ri(cR[d][0],cR[d][1]);const g=[];for(let r=0;r<rows;r++){g.push([]);for(let c=0;c<cols;c++)g[r].push(1);}const turn=fia===false?'B':'A';return{g,rows,cols,turn,done:false};},
     render(st,el){
       const{rows,cols}=st;
       let h=`<div style="font-size:11px;color:var(--text3);margin-bottom:4px">보드: ${rows}행 × ${cols}열</div>`;
@@ -727,10 +895,10 @@ const GAMES=[
     },
     ai(st){const{rows,cols}=st;const m=[];for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(st.g[r][c]&&!(r===0&&c===0))m.push([r,c]);return m.length?m[Math.floor(Math.random()*m.length)]:[0,0];}
   },
-  /* ⑦ 돌 더미 나누기 — 더미 개수·크기 랜덤 */
+  /* ⑦ 돌 더미 나누기 */
   {id:'split',title:'돌 더미 나누기',minDiff:'med',
-    desc:d=>`돌 더미들 (랜덤 개수·크기). 번갈아 <u>불같지 않은 두 더미</u>로 나누기. 나눌 수 없는 쪽이 집니다. A 먼저.`,
-    init:d=>{const numPiles=ri(1,3);const sR={med:[8,18],hard:[15,28]};const[sl,sh]=sR[d]||[8,18];const piles=[];for(let i=0;i<numPiles;i++)piles.push(ri(sl,sh));return{piles,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>`돌 더미들 (랜덤). 번갈아 <u>불같지 않은 두 더미</u>로 나누기. 나눌 수 없는 쪽이 집니다. 선공: <b>${fia===false?'컴퓨터':'당신'}</b>.`,
+    init:(d,fia,ltw)=>{const numPiles=ri(1,3);const sR={med:[8,18],hard:[15,28]};const[sl,sh]=sR[d]||[8,18];const piles=[];for(let i=0;i<numPiles;i++)piles.push(ri(sl,sh));const turn=fia===false?'B':'A';return{piles,turn,done:false};},
     render(st,el){
       let h='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">';
       st.piles.forEach((p,i)=>{h+=`<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:8px 12px;text-align:center"><div class="mono" style="font-size:16px;font-weight:700">${p}</div><div style="font-size:10px;color:var(--text3)">더미${i+1}</div></div>`;});
@@ -750,13 +918,18 @@ const GAMES=[
     },
     ai(st){for(const[i,p] of st.piles.entries()){if(p>=3){for(let a=1;a<p;a++){const b=p-a;if(a!==b&&a>=1&&b>=1)return[i,a,b];}}}return null;}
   },
-  /* ⑧ 바이너리 님 — 더미 개수·크기 랜덤, XOR 전략 AI */
+  /* ⑧ 바이너리 님 */
   {id:'bnim',title:'바이너리 님',minDiff:'hard',
-    desc:d=>`여러 돌 더미 (랜덤 개수·크기). 번갈아 <u>한 더미에서 원하는 만큼</u> 가져가기(최소1개). <u>마지막 돌을 가져가는 쪽이 이깁니다</u>. A 먼저.`,
-    init:d=>{const numPiles=ri(2,4);const piles=[];for(let i=0;i<numPiles;i++)piles.push(ri(3,15));return{piles,turn:'A',done:false};},
+    desc:(d,fia,ltw)=>{
+      const wtxt=ltw===false?'마지막 가져가면 패':'마지막 가져가면 승';
+      return `여러 돌 더미 (랜덤). 번갈아 <u>한 더미에서 원하는 만큼</u>(최소1개). <b>${wtxt}</b>. 선공: <b>${fia===false?'컴퓨터':'당신'}</b>.`;
+    },
+    init:(d,fia,ltw)=>{const numPiles=ri(2,4);const piles=[];for(let i=0;i<numPiles;i++)piles.push(ri(3,15));const turn=fia===false?'B':'A';return{piles,turn,done:false,ltw:ltw!==false};},
     render(st,el){
       const labels='ABCDE'.split('');
-      let h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">';
+      const wlabel=st.ltw?'마지막=승':'마지막=패';
+      let h=`<div style="font-size:11px;color:var(--accent);margin-bottom:6px">${wlabel}</div>`;
+      h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0">';
       st.piles.forEach((p,i)=>{
         h+=`<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 14px;text-align:center;min-width:70px">
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px">더미 ${labels[i]}</div>
@@ -778,12 +951,23 @@ const GAMES=[
       el.innerHTML=h;
     },
     ai(st){
+      // Misère Nim: ltw=false → last loses → 미제르 전략
+      const total=st.piles.reduce((a,b)=>a+b,0);
       const xor=st.piles.reduce((a,b)=>a^b,0);
-      if(xor!==0){for(let i=0;i<st.piles.length;i++){const target=st.piles[i]^xor;if(target<st.piles[i])return[i,st.piles[i]-target];}}
-      for(let i=0;i<st.piles.length;i++){if(st.piles[i]>0)return[i,1];}return null;
+      if(st.ltw){// 일반 님
+        if(xor!==0){for(let i=0;i<st.piles.length;i++){const target=st.piles[i]^xor;if(target<st.piles[i])return[i,st.piles[i]-target];}}
+        for(let i=0;i<st.piles.length;i++){if(st.piles[i]>0)return[i,1];}
+      } else {// 미제르 님
+        const allOne=st.piles.every(p=>p<=1);
+        if(allOne){const ones=st.piles.filter(p=>p===1).length;const idx=st.piles.findIndex(p=>p===1);return[idx,1];}// 홀수 남기기
+        if(xor!==0){for(let i=0;i<st.piles.length;i++){const target=st.piles[i]^xor;if(target<st.piles[i]){const leave=st.piles.filter((p,j)=>j!==i).reduce((a,b)=>a^b,0)^target;if(st.piles[i]-target>0)return[i,st.piles[i]-target];}}}
+        for(let i=0;i<st.piles.length;i++){if(st.piles[i]>0)return[i,1];}
+      }
+      return null;
     }
   },
 ];
+
 
 /* 현재 게임 상태 */
 let mg={game:null,st:null,done:false,diff:'med'};
@@ -802,26 +986,115 @@ function openMG(){
   document.getElementById('mg-select-modal').classList.add('open');
 }
 
+/* ─── boost 시스템 ─── */
+let mgBoostLevel=0; // 0=기본, 누를 때마다+1
+const BOOST_REWARDS=[0,500,1200,2500,4500,7000,10000]; // 누적 추가 상금 (level별)
+function boostGame(){
+  if(mg.done||!mg.game)return;
+  mgBoostLevel++;
+  const g=mg.game;
+  // 게임별 boost 처리
+  const st=mg.st;
+  if(st.n!==undefined){// nim류
+    const add=Math.round(st.n*(0.3+mgBoostLevel*0.15));
+    st.n+=add;if(st.total!==undefined)st.total+=add;
+    addLog(`[범위↑${mgBoostLevel}] +${add}개 추가됨`);
+  } else if(st.piles){// split/bnim
+    const idx=Math.floor(Math.random()*st.piles.length);
+    const add=ri(3,6+mgBoostLevel*2);
+    st.piles[idx]+=add;
+    addLog(`[범위↑${mgBoostLevel}] 더미${idx+1} +${add}개`);
+  } else if(st.g){// chomp: 열 추가
+    const newCols=st.cols+1;
+    for(let r=0;r<st.rows;r++)st.g[r].push(1);
+    st.cols=newCols;
+    addLog(`[범위↑${mgBoostLevel}] 초콜릿 열 추가 → ${st.rows}×${st.cols}`);
+  } else if(st.board&&st.cols){// c4: 열 추가
+    const newCols=st.cols+1;const newRows=st.rows;
+    const newBoard=Array(newCols*newRows).fill(0);
+    for(let r=0;r<newRows;r++)for(let col=0;col<st.cols;col++)newBoard[r*newCols+col]=st.board[r*st.cols+col];
+    st.board=newBoard;st.cols=newCols;
+    addLog(`[범위↑${mgBoostLevel}] 커넥트4 열 추가 → ${st.cols}열`);
+  }
+  // 보상 계산 및 표시
+  const base=REWARDS[mg.diff||'med'];
+  const extra=BOOST_REWARDS[Math.min(mgBoostLevel,BOOST_REWARDS.length-1)];
+  mg.boostReward=base+extra;
+  const bi=document.getElementById('mg-boost-info');
+  bi.style.display='block';
+  bi.textContent=`⬆ 범위 확장 ${mgBoostLevel}회 · 승리 시 ${fmtFull(mg.boostReward)} 획득`;
+  document.getElementById('mg-reward-label').textContent=`${DNAMES[mg.diff]} · 승리 시 ${fmtFull(mg.boostReward)} 획득`;
+  g.render(mg.st,document.getElementById('mg-board'));
+}
+
 function startGame(id){
   const g=GAMES.find(x=>x.id===id);
-  const st=g.init(curDiff);
-  mg={game:g,st,done:false,diff:curDiff};
+  // 선후공 결정
+  let firstIsA;
+  if(turnOpt==='random') firstIsA=Math.random()<0.5;
+  else if(turnOpt==='first') firstIsA=true;
+  else firstIsA=false;
+  // 승리조건 결정 (lastTakerWins: true=마지막 가져가면 이김)
+  let lastTakerWins;
+  if(winOpt==='random') lastTakerWins=Math.random()<0.5;
+  else if(winOpt==='lastWin') lastTakerWins=true;
+  else lastTakerWins=false;
+
+  const st=g.init(curDiff,firstIsA,lastTakerWins);
+  mgBoostLevel=0;
+  mg={game:g,st,done:false,diff:curDiff,boostReward:REWARDS[curDiff],firstIsA,lastTakerWins:lastTakerWins};
   closeModal('mg-select-modal');
   document.getElementById('mg-title').textContent=g.title;
-  document.getElementById('mg-reward-label').textContent=`${DNAMES[curDiff]} · 승리 시 ${fmtFull(REWARDS[curDiff])} 획득`;
-  document.getElementById('mg-desc').innerHTML=g.desc(curDiff);
+  const condLabel=`${firstIsA?'내가 선공':'컴퓨터 선공'} · ${lastTakerWins?'마지막=승리':'마지막=패배'}`;
+  document.getElementById('mg-reward-label').textContent=`${DNAMES[curDiff]} · ${condLabel} · 승리 시 ${fmtFull(mg.boostReward)} 획득`;
+  document.getElementById('mg-desc').innerHTML=g.desc(curDiff,firstIsA,lastTakerWins);
   document.getElementById('mg-result').textContent='';
   document.getElementById('mg-log').innerHTML='';
+  const bi=document.getElementById('mg-boost-info');bi.style.display='none';
   document.getElementById('mg-modal').classList.add('open');
   g.render(st,document.getElementById('mg-board'));
-  // 틱택토: 컴퓨터 선공이면 즉시 AI 이동
-  if(id==='ttt'&&st.firstTurn==='B'){
+  // 컴퓨터 선공 처리
+  if(!firstIsA){
     setTimeout(()=>{
       if(mg.done)return;
-      const m=g.ai(st);
-      if(m!==null){st.board[m]=-1;addLog('컴퓨터(B) 선공: '+(m+1)+'번');}
-      st.turn='A';g.render(st,document.getElementById('mg-board'));
-    },500);
+      if(g.id==='ttt'){
+        const m=g.ai(st);if(m!==null){st.board[m]=-1;addLog('컴퓨터(B) 선공: '+(m+1)+'번');}
+        st.turn='A';g.render(st,document.getElementById('mg-board'));
+      } else if(g.id==='c4'){
+        const mc=g.ai(st);if(mc!==null){
+          const{board,cols,rows}=st;
+          for(let row=0;row<rows;row++){if(board[row*cols+mc]===0){board[row*cols+mc]=-1;break;}}
+          addLog('컴퓨터(B) 선공: '+(mc+1)+'열');
+        }
+        st.turn='A';g.render(st,document.getElementById('mg-board'));
+      } else if(g.id==='chomp'){
+        const[ar,ac]=g.ai(st);
+        if(ar===0&&ac===0){endMG(false);return;}
+        const{rows,cols}=st;for(let rr=ar;rr<rows;rr++)for(let cc=ac;cc<cols;cc++)st.g[rr][cc]=0;
+        addLog(`컴퓨터(B) 선공: (${ar+1}행,${ac+1}열)`);
+        let left=0;for(let rr=0;rr<rows;rr++)for(let cc=0;cc<cols;cc++)if(st.g[rr][cc])left++;
+        if(left===1){endMG(false);return;}
+        st.turn='A';g.render(st,document.getElementById('mg-board'));
+      } else if(g.id==='split'){
+        const mv=g.ai(st);if(!mv){endMG(true);return;}
+        const[bi,ba,bb]=mv;const bp=st.piles[bi];st.piles.splice(bi,1,ba,bb);
+        addLog(`컴퓨터(B) 선공: 더미${bi+1}(${bp}) → ${ba}+${bb}`);
+        if(!st.piles.some(p=>p>=3)){endMG(false);return;}
+        st.turn='A';g.render(st,document.getElementById('mg-board'));
+      } else if(g.id==='bnim'){
+        const mv=g.ai(st);if(!mv){endMG(true);return;}
+        const[bi,bn]=mv;st.piles[bi]-=bn;
+        addLog(`컴퓨터(B) 선공: 더미${['A','B','C','D'][bi]} −${bn}`);
+        if(st.piles.every(p=>p===0)){endMG(false);return;}
+        st.turn='A';g.render(st,document.getElementById('mg-board'));
+      } else if(g.step){// nim 계열
+        const m=g.ai(st);if(m===null){endMG(true);return;}
+        addLog('컴퓨터(B) 선공: '+m+'개');
+        const res=g.step(st,m,false,mg.lastTakerWins);
+        if(res){endMG(res==='win');return;}
+        st.turn='A';g.render(st,document.getElementById('mg-board'));
+      }
+    },600);
   }
 }
 
@@ -829,13 +1102,13 @@ function startGame(id){
 window.mgNim=function(n){
   const g=mg.game,st=mg.st;if(st.turn!=='A'||mg.done)return;
   addLog('당신(A): '+n+'개');
-  const res=g.step(st,n,true);
+  const res=g.step(st,n,true,mg.lastTakerWins);
   if(res){endMG(res==='win');return;}
   st.turn='B';g.render(st,document.getElementById('mg-board'));
   setTimeout(()=>{
     const m=g.ai(st);if(m===null){endMG(true);return;}
     addLog('컴퓨터(B): '+m+'개');
-    const res2=g.step(st,m,false);
+    const res2=g.step(st,m,false,mg.lastTakerWins);
     if(res2){endMG(res2==='win');return;}
     st.turn='A';g.render(st,document.getElementById('mg-board'));
   },700);
@@ -898,6 +1171,7 @@ window.mgChomp=function(r,c){
 /* ── 돌 더미 나누기 ── */
 window.mgSplit=function(){
   const g=mg.game,st=mg.st;if(st.turn!=='A'||mg.done)return;
+  document.getElementById('mg-result').textContent='';
   const pi=parseInt(document.getElementById('sp-pile').value);
   const a=parseInt(document.getElementById('sp-a').value);
   const b=parseInt(document.getElementById('sp-b').value);
@@ -921,16 +1195,18 @@ window.mgBNim=function(){
   const g=mg.game,st=mg.st;if(st.turn!=='A'||mg.done)return;
   const pi=parseInt(document.getElementById('bn-pile').value);
   const n=parseInt(document.getElementById('bn-n').value);
+  const labels=['A','B','C','D'];
   if(!n||n<1||n>st.piles[pi]){document.getElementById('mg-result').textContent='유효하지 않은 수';document.getElementById('mg-result').style.color='var(--red)';return;}
   document.getElementById('mg-result').textContent='';
-  st.piles[pi]-=n;addLog(`당신(A): 더미${['A','B','C'][pi]} −${n} → ${st.piles[pi]}`);
-  if(st.piles.every(p=>p===0)){endMG(true);return;}
+  st.piles[pi]-=n;addLog(`당신(A): 더미${labels[pi]} −${n} → ${st.piles[pi]}`);
+  const ltw=mg.lastTakerWins!==undefined?mg.lastTakerWins:st.ltw!==undefined?st.ltw:true;
+  if(st.piles.every(p=>p===0)){endMG(ltw?true:false);return;}// 마지막=내가 가져감
   st.turn='B';g.render(st,document.getElementById('mg-board'));
   setTimeout(()=>{
-    const mv=g.ai(st);if(!mv){endMG(true);return;}
+    const mv=g.ai(st);if(!mv){endMG(!ltw);return;}// 컴퓨터 이동 불가 → ltw이면 내가 승
     const[bi,bn]=mv;st.piles[bi]-=bn;
-    addLog(`컴퓨터(B): 더미${['A','B','C'][bi]} −${bn} → ${st.piles[bi]}`);
-    if(st.piles.every(p=>p===0)){endMG(false);return;}
+    addLog(`컴퓨터(B): 더미${labels[bi]} −${bn} → ${st.piles[bi]}`);
+    if(st.piles.every(p=>p===0)){endMG(!ltw);return;}// 컴퓨터가 마지막 → ltw면 컴퓨터 승=내가 패
     st.turn='A';g.render(st,document.getElementById('mg-board'));
   },700);
 };
@@ -939,7 +1215,7 @@ window.mgBNim=function(){
 function endMG(won){
   mg.done=true;if(mg.st)mg.st.done=true;
   const el=document.getElementById('mg-result');
-  const reward=REWARDS[mg.diff||'med'];
+  const reward=mg.boostReward||REWARDS[mg.diff||'med'];
   if(won){el.textContent=`🎉 승리! ${fmtFull(reward)} 획득!`;el.style.color='var(--gold)';G.cash+=reward;sl();renderProfile();renderWork();}
   else{el.textContent='😞 패배... 다시 도전하세요.';el.style.color='var(--red)';}
   if(mg.game&&mg.st)mg.game.render(mg.st,document.getElementById('mg-board'));
